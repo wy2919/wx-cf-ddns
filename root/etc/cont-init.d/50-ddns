@@ -14,15 +14,48 @@ else
 fi
 
 if [ "$CurrentIpAddress" != "$DnsIpAddress" ]; then
-  echo "Updating CloudFlare DNS record $CF_RECORD_NAME from $DnsIpAddress to $CurrentIpAddress..."
+  echo "域名 $CF_RECORD_NAME 由 $DnsIpAddress 更新为 $CurrentIpAddress..."
   update=$(updateDnsRecord $CF_ZONE_ID $CF_RECORD_ID $CF_RECORD_NAME $CurrentIpAddress)
 
   if [ "$update" == "null" ]; then
-    echo "ERROR: Failed to update CloudFlare DNS record $CF_RECORD_NAME from $DnsIpAddress to $CurrentIpAddress"
+    echo "错误 无法更新 DNS ==  $CF_RECORD_NAME from $DnsIpAddress to $CurrentIpAddress"
   else
-    echo "CloudFlare DNS record $CF_RECORD_NAME ($CurrentIpAddress) updated successfully."
+    echo "成功把域名 $CF_RECORD_NAME 的纪录更新为 ($CurrentIpAddress) "
+    # 获取token
+	json=$(curl -s  "https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid=${corpid}&corpsecret=${corpsecret}")
+	# 使用jq解析获取json中的errcode
+	code=$(echo $json | jq -r '.errcode')
+	
+	
+	if [ "$code" == 0 ]
+	then
+		# 获取token成功
+		token=$(echo $json | jq -r '.access_token')
+	
+		# 发送通知
+		URL="https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token=$token"
+		
+		body='{
+		  "touser": "@all",
+		  "msgtype": "text",
+		  "agentid": '${agentid}', 
+		  "text":{
+		     "content":"DDNS：'${CF_RECORD_NAME}' 更新为 '$CurrentIpAddress'"
+	     	},
+		  "safe":0
+		  }'
+		  
+		
+		res=$(curl -s -X POST -d "$body" $URL)
+		error=$(echo $res | jq -r '.errmsg')
+	    echo "发送微信通知：${error}"
+	
+	else
+		error=$(echo $json | jq -r '.errmsg')
+	    echo "获取微信token失败：${code} == ${error}"
+	fi
   fi
   
 else
-  echo "No DNS update required for $CF_RECORD_NAME ($DnsIpAddress)."
+  echo "不需要DNS更新（ip无变化）： $CF_RECORD_NAME ($DnsIpAddress)."
 fi
